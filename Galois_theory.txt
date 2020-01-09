@@ -1,0 +1,201 @@
+def elementary(f, elem = []):
+    if f == 0:
+        return sum(elem)
+    l = len(f.parent().gens())
+    S = PolynomialRing(QQ, "x", l, order = 'lex')
+    T.<X> = PolynomialRing(S)
+    p = T(1)
+    for i in S.gens():
+        p *= (X+i)
+    c = p.list()
+    trash = c.pop()
+    c.reverse()
+    f = S(f)
+    L = f.lt()
+    k = L.exponents()
+    kl = len(k[0])
+    alpha = []
+    for i in range(kl):
+        alpha.append(k[0][i] - k[0][i+1])
+    W = PolynomialRing(QQ,'e',l)
+    h_e = W(1)
+    h = 1
+    for i in range(len(alpha)):
+        h_e *= W.gens()[i]^(alpha[i])
+        h *= (c[i])^(alpha[i])
+    lc = f.coefficients()[0]
+    elem.append(lc*h_e)
+    g = f - lc*h
+    return elementary(g, elem)
+    
+def irreducible_factor(f, L=[], y =0):
+    h = len(L)
+    S.<x> = PolynomialRing(QQ)
+    f = S(f)
+    f = f*f.denominator()
+    f_roots = f.roots()
+
+    has_root = False
+    if f_roots != []:
+        has_root = True
+        print(x - f_roots[0][0])
+    if not has_root:
+        n = f.degree()
+        m = n//2
+        K = IntegerRange(0,m+1,1)
+
+        Val_F = []
+        for k in K:
+            Val_F.append(f(k))
+
+        Divisors = []
+        for val in Val_F:
+            val = Integer(val)
+            Divisors.append(divisors(val))
+
+        Poly = []
+        C = cartesian_product([Divisors[i] for i in range(len(Divisors))]).list()
+
+        Points = []
+        list = [i for i in range(m+1)]
+        for c in C:
+            for i in range(len(c)):
+                point = [list[i],c[i]]
+                Points.append(point)
+            g = (S.lagrange_polynomial(Points))
+            g = S(g)
+            Poly.append(g)
+            Points = []
+        Poly_C = Poly[:]
+
+        for s in Poly_C:
+            if s == 1 or s == -1:
+                Poly.remove(s)
+                continue
+            if not all([coeff in ZZ for coeff in s.list()]):
+                Poly.remove(s)
+                continue
+            d = f.quo_rem(s)
+            if d[1] != 0:
+                Poly.remove(s)
+                continue
+            if not all([coeff in ZZ for coeff in d[0].list()]):
+                Poly.remove(s)
+        for p in Poly:
+            L.append(p)
+        n = len(L)
+        if n == 0:
+            return f
+        elif n == h:
+            return L[h-y]
+        else:
+            return irreducible_factor(Poly[0], L, len(Poly))
+            
+def G_polynomial(f):
+    n = f.degree()
+    f_coeffs = f.list()
+    trash = f_coeffs.pop()
+    f_coeffs.reverse()
+    R.<x,y> = PolynomialRing(QQ)
+    q = R((f(x) - f(y))/(x-y))
+    S.<y> = PolynomialRing(QQ)
+    T.<x> = PolynomialRing(S)
+    q = T(q)
+    q_coeffs = q.list()
+    trash = q_coeffs.pop()
+    for i in range(len(q_coeffs)):
+        if i % 2 == 1:
+            q_coeffs[i] = -q_coeffs[i]
+    C = PolynomialRing(QQ, 't', n)
+    for i in range(len(q_coeffs)):
+        q_coeffs[i]=q_coeffs[i](C.0)
+    q_coeffs.reverse()
+    W.<x> = PolynomialRing(C)
+    #uppercase = [C(1),C(-1),C(0)]
+    uppercase = [C(randrange(100)) for i in range(n)]
+    lowercase = C.gens()
+    Sn = SymmetricGroup(n)
+    F = W(1)
+    for s in Sn.stabilizer(1):
+        Vs = sum([uppercase[i]*lowercase[s(i+1)-1] for i in range(n)])
+        F *= (x - Vs)
+    F_coeffs = F.list()
+    B = PolynomialRing(QQ, 'e', n - 1)
+    JJ = PolynomialRing(QQ, 't', n - 1)
+    J.<t0> = PolynomialRing(JJ)
+    K = [J(c).list() for c in F_coeffs]
+    K_c = K[:]
+    for k in K:
+        for i in range(len(k)):
+            k[i] = elementary(k[i], elem =[])
+            k[i] = J(k[i](q_coeffs))
+    Z = []
+    for k in K:
+        M = J(0)
+        for i in range(len(k)):
+            M += t0^i*k[i]
+        Z.append(M)
+    P.<x> = PolynomialRing(J)
+    F = P(0)
+    for i in range(len(Z)):
+        F += P.0^i * Z[i]
+    L.<x,t0> = PolynomialRing(QQ)
+    F = L(F)
+    G = L(1)
+    for t in lowercase:
+        G *=F(x,t)
+    G = W(G)
+    G_coeffs = G.list()
+    H.<x> = PolynomialRing(QQ)
+    G = H(0)
+    G_coeffs_c = G_coeffs[:]
+    for i in range(len(f_coeffs)):
+        if i%2 == 0:
+            f_coeffs[i] = -f_coeffs[i]
+    for i in range(len(G_coeffs)):
+        G_coeffs[i] = elementary(G_coeffs[i], elem =[])
+        G += (H.0)^i*G_coeffs[i](f_coeffs)
+    return F, G
+    
+def splitting_field(f):
+    f_p = f.derivative()
+    c = f.gcd(f_p)
+    F, G = G_polynomial(f//c)
+    gamma = irreducible_factor(G)
+    S.<V> = NumberField(gamma)
+    f_r = f.change_ring(S).roots()
+    f_roots = []
+    for f in f_r:
+        f_roots.append(f[0])
+    return gamma, f_roots
+
+def galois_group(f):
+    gamma, f_roots = splitting_field(f)
+    S.<V> = NumberField(gamma)
+    c = V.coordinates_in_terms_of_powers()
+    gamma_roots = gamma.change_ring(S).roots()
+    A.<x> = PolynomialRing(QQ)
+    def P(L):
+        return sum([x^i*L[i] for i in range(len(L))])
+    p = []
+    for g in gamma_roots:
+        m = []
+        for i in range(len(f_roots)):
+            h = P(c(f_roots[i]))
+            m.append(h(g[0]))
+        p.append(m)
+    perm = []
+    for i in range(len(p)):
+        for j in range(len(p[i])):
+            perm.append([p[0][j],p[i][j]])
+    for i in range(len(perm)):
+        for j in range(len(perm[i])):
+            perm[i][j] = (f_roots.index(perm[i][j]))+1
+    k =[]
+    for i in range(len(perm)):
+        if i%len(f_roots) == 0:
+            k.append([perm[i],perm[i+1],perm[i+2]])
+    return k
+
+_.<x> = PolynomialRing(QQ)
+print(galois_group(x^4 - x -1))
